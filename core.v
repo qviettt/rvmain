@@ -24,13 +24,13 @@ module core(pc_out, clk, rst_n, instruction, rs2_val_sx, alu_addr, mem_we_in, me
   wire [31:0] alu_out;
 	//Register File
 //	wire reg_we;
-	wire [31:0] instruction_mux_out;
+//	wire [31:0] instruction_mux_out;
 	wire [4:0] rs1, rs2, rd;
 	wire [31:0] rd_val, rs1_val, rs2_val;
 	wire [1:0] rd_sel;
 
 	//Program Counter
-	wire [31:0] pc, pc_add_out, pc_add_in, pc_mux_out, new_pc_in;
+	wire [31:0] pc, pc_add_out, pc_add_in, pc_mux_out;
 	wire pc_next_sel, pc_add_sel;
 
     wire [31:0] imm_x;
@@ -92,7 +92,8 @@ register_bank register_file(
 	.mem_we(mem_we)		, 
 	.addr(alu_out)
 );
-//
+
+/*
 load_stall stall_unit(
 	.delayed_rd(delayed_rd)			, 
 	.delayed_addr(delayed_addr)	, 
@@ -103,7 +104,7 @@ load_stall stall_unit(
 	.clk(clk) 						, 
 	.rst(rst_n)
 	);
-
+*/
 
 	//Program Counter
 	mux32two pc_add_mux(
@@ -115,12 +116,12 @@ load_stall stall_unit(
 	mux32two pc_mux(
 	.i0 (pc_add_out), .i1(alu_out), .sel(pc_next_sel), .out(pc_mux_out));
 	
-	mux32two stall_mux(
-	.i0 (pc_mux_out), .i1(pc), .sel(load_o), .out(new_pc_in));
+//	mux32two stall_mux(
+//	.i0 (pc_mux_out), .i1(pc), .sel(1'b0), .out(new_pc_in));
 
 	
 	program_counter pc_latch(
-		.D(new_pc_in),.clk(clk),.rst(rst_n),.Q(pc));
+		.D(pc_mux_out),.clk(clk),.rst(rst_n),.Q(pc));
 
 
 	//ALU
@@ -142,10 +143,10 @@ load_stall stall_unit(
 	);
 
 	//Control Unit
-	parameter NOP_STALL = 32'b00000000000000000000000000010011; // no operation signal which is equivalent to addi x0, x0, 0
+//	parameter NOP_STALL = 32'b00000000000000000000000000010011; // no operation signal which is equivalent to addi x0, x0, 0
 
-	mux32two instruction_mux(
-	.i0 (instruction), .i1 (NOP_STALL), .sel (delayed_load), .out (instruction_mux_out));
+//	mux32two instruction_mux(
+//	.i0 (instruction), .i1 (NOP_STALL), .sel (delayed_load), .out (instruction_mux_out));
 
 	wire sysi_o;
 
@@ -165,30 +166,18 @@ control_unit core_control(
 	.pc_next_sel(pc_next_sel), 
 	.mem_we(mem_we)			, 
 	.sx_size(sx_size)		, 
-	.stall(stall)			,
 	.crypto_instruction(crypto_insn),
 	.bitmanip_instruction(bitmanip_insn),
 	.sysi_o(sysi_o)			,
 	.eq(eq) 				, 
 	.a_lt_b(a_lt_b)			, 
 	.a_lt_ub(a_lt_ub)		,	 
-	.instruction(instruction_mux_out), 
+	.instruction(instruction), 
 	.clk(clk)				, 
 	.rst(rst_n) ,  
-	.delayed_load(delayed_load), 
-	.delayed_rd(delayed_rd),
-	.delayed_clmul(delayed_clmul),
     .jal_sel(jal_sel),
 	.load_o(load_o)
-//	.delayed_load(1'b0), 
-//	.delayed_rd(1'b0),
-//	.delayed_clmul(1'b0)
 );
-
-
-	//If any system function is called, it generates a reset
-//	assign reset = ext_reset & !sysi_o;
-//	assign wait_in = busy | stall;
 
 	//Scalar Crypto
 	mux32three crypto_mux(
@@ -200,16 +189,6 @@ control_unit core_control(
 	.instruction(crypto_insn), 
 	.rd(crypto_rd)
 );
-//
-//	bitmanip_top bitmanip_fu(
-//	.delayed_clmul(delayed_clmul), 
-//	.busy(busy),
-//	.rs1(rs1_val), 
-//	.rs2(rs2_val), 
-//	.instruction(bitmanip_insn), 
-//	.rd(bitmanip_rd), 
-//	.clk(clk), 
-//	.rst(ext_reset)
-//	);
+
 
 endmodule

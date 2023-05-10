@@ -1,15 +1,15 @@
 module control_unit (
   imm_val, rs1, rs2, rd, mux_a_sel, mux_b_sel, alu_func, is_scalar_crypto, is_bitmanip, rd_sel, reg_we, pc_add_sel, pc_next_sel, 
-  mem_we, sx_size, stall, crypto_instruction, bitmanip_instruction, sysi_o, eq, a_lt_b, a_lt_ub, instruction, clk, rst, delayed_load, delayed_rd, delayed_clmul, jal_sel, load_o
+  mem_we, sx_size, crypto_instruction, bitmanip_instruction, sysi_o, eq, a_lt_b, a_lt_ub, instruction, clk, rst, jal_sel, load_o
 );
 	input eq, a_lt_b, a_lt_ub;
     input [31:0] instruction;
     input clk, rst;
 
-    input delayed_load;
-    input [4:0] delayed_rd;
+//    input delayed_load;
+//    input [4:0] delayed_rd;
   
-    input delayed_clmul; 
+//    input delayed_clmul; 
 // JAL, JALR //
     output jal_sel;
 //-----------//	
@@ -49,10 +49,10 @@ module control_unit (
 
     //wire invalid_opcode;
 
-    output stall;
+ //   output stall;
 
 	output [3:0] alu_func;
-	output reg [2:0] sx_size;
+	output [2:0] sx_size;
 	output [1:0] rd_sel;
 	output mux_a_sel, mux_b_sel, pc_add_sel, reg_we, mem_we, pc_next_sel;
 
@@ -66,7 +66,7 @@ module control_unit (
     assign rs2 = instruction[24:20];
     //assign rd  = instruction[11:7];
     assign rd = !rst ? 5'd0: 
-                delayed_load ? delayed_rd : 
+//                delayed_load ? delayed_rd : 
 //    	           0 ? rs1: instruction[11:7];
                 scalar_crypto_op & is_scalar_crypto_block ? rs1: instruction[11:7];
 
@@ -163,17 +163,6 @@ module control_unit (
         bit_u16 = 3'b011,
         bit32   = 3'b100;
 
-/*
-    assign invalid_opcode = !(eq_o|neq_o|lt_o|ltu_o|ge_o|geu_o|
-            add_o|sub_o|sll_o|slt_o|sltu_o|xor_o|srl_o|sra_o|or_o|and_o|alu_jalr_o|lui_o| 
-            mem_byte|mem_half|mem_word|mem_byte_u|mem_half_u|
-            op_saes32_encs|op_saes32_encsm|op_saes32_decs|op_saes32_decsm|
-            op_ssha256_sig0|op_ssha256_sig1|op_ssha256_sum0|op_ssha256_sum1| 
-            op_ssha512_sum0r|op_ssha512_sum1r|op_ssha512_sig0l|op_ssha512_sig0h|op_ssha512_sig1l|op_ssha512_sig1h|
-            op_ssm3_p0|op_ssm3_p1|  
-            op_ssm4_ks|op_ssm4_ed)
-*/
-
     //MUX Selects
     assign mux_a_sel = !rst ? 0 : 
                        (jal_o|lui_o|auipc_o) ? 1 : 0; 
@@ -187,7 +176,7 @@ module control_unit (
                         (jal_o|eq_o|neq_o|lt_o|ltu_o|ge_o|geu_o)? 1 : 0;
     
     assign reg_we_temp = (!rst ? 0 :
-                         lui_o|auipc_o|jal_o|jalr_o|alu_o|imm_o)? 1 : 0; 
+                         lui_o|auipc_o|jal_o|jalr_o|alu_o|imm_o|load_o)? 1 : 0; 
     assign reg_we = !rst ? 0 :
                     reg_we_temp & |rd & rst; //Disable if rd=0
     
@@ -196,9 +185,10 @@ module control_unit (
     assign rd_sel = !rst ? 0 :
                     (lui_o)         ? 2'b01 :
                     (jalr_o|jal_o)  ? 2'b10 : 
-                    (delayed_load)        ? 2'b11 :   
+                    //(delayed_load)        ? 2'b11 :   
+                    (load_o)        ? 2'b11 :  
                     2'b0;
-    
+  /* 
     always @(posedge clk or negedge rst) begin
         if(!rst) begin
           sx_size = 3'b0;
@@ -212,24 +202,18 @@ module control_unit (
                            3'b0;                        //Memory Formatting
         end
     end
+*/
+assign sx_size = !rst ? 3'b0 : 
+                 !(load_o | store_o) ? 3'b0:
+                 mem_byte ? bit8 :   
+                 mem_half ? bit16 :
+                 mem_word ? bit32 :
+                 mem_byte_u ? bit_u8 :   
+                 mem_half_u ? bit_u16 :
+                 3'b0;
 
-    //always @(posedge clk)
-    //    begin
-	// if(!rst | !load_o)	
-    //        stall <= 1'b0;
-	// else if (load_o) 
-	// 	stall <= 1'b1;
-    //    end
-    // always @(negedge rst or load_o)
-    // begin
-    //     if(!rst)
-    //         stall<=1'b0;
-    //     else
-    //         stall<=load_o;
-    // end
-
-    assign stall = rst & load_o;
-
+ //   assign stall = rst & load_o;
+  //  assign stall = 1'b0;
     assign alu_func =   !rst        ? 4'b0 :
                         (add_o)     ? func_ADD :   
                         (sub_o)     ? func_SUB :
@@ -253,48 +237,18 @@ module control_unit (
 
     assign is_scalar_crypto_hash  = !rst ? 0 : ~instruction[29];
     assign is_scalar_crypto_block = !rst ? 0 : instruction[29];
-//
-//
-//    assign scalar_crypto_sm3    =!rst ? 0 : instruction[24:22] == 3'b010;
+
     assign scalar_crypto_sha256 =!rst ? 0 : instruction[24:22] == 3'b000;
-//    assign scalar_crypto_sha512 =!rst ? 0 : instruction[31:30] == 2'b01;
-//    assign scalar_crypto_sha512_high = !rst ? 0 : instruction[27];
-//    assign scalar_crypto_sha512_low  = !rst ? 0 : ~instruction[27];
-//    
-//    assign scalar_crypto_sm4 = !rst ? 0 : ~instruction[25];
-//    assign scalar_crypto_aes = !rst ? 0 : instruction[25];
-//
-//
-//    assign op_ssm3_p0       = !rst ? 0 : scalar_crypto_op_imm & scalar_crypto_sm3 & instruction[21:20] == 2'b00;// & is_scalar_crypto_hash; //      SSM3 P0
-//    assign op_ssm3_p1       = !rst ? 0 : scalar_crypto_op_imm & scalar_crypto_sm3 & instruction[21:20] == 2'b01;// & is_scalar_crypto_hash; //      SSM3 P1    
-//
+
     assign op_ssha256_sum0  = !rst ? 0 : scalar_crypto_op_imm & scalar_crypto_sha256 & instruction[21:20] == 2'b00;// & is_scalar_crypto_hash; //      SHA256 Sum 0
     assign op_ssha256_sum1  = !rst ? 0 : scalar_crypto_op_imm & scalar_crypto_sha256 & instruction[21:20] == 2'b01;// & is_scalar_crypto_hash; //      SHA256 Sum 1
     assign op_ssha256_sig0  = !rst ? 0 : scalar_crypto_op_imm & scalar_crypto_sha256 & instruction[21:20] == 2'b10;// & is_scalar_crypto_hash; //      SHA256 Sigma 0
     assign op_ssha256_sig1  = !rst ? 0 : scalar_crypto_op_imm & scalar_crypto_sha256 & instruction[21:20] == 2'b11;// & is_scalar_crypto_hash; //      SHA256 Sigma 1
-//
-//    assign op_ssha512_sum0r = !rst ? 0 : scalar_crypto_op & scalar_crypto_sha512 & scalar_crypto_sha512_low  & instruction[26:25] == 2'b00 & is_scalar_crypto_hash; // RV32 SHA512 Sum 0
-//    assign op_ssha512_sum1r = !rst ? 0 : scalar_crypto_op & scalar_crypto_sha512 & scalar_crypto_sha512_low  & instruction[26:25] == 2'b01 & is_scalar_crypto_hash; // RV32 SHA512 Sum 1
-//    assign op_ssha512_sig0l = !rst ? 0 : scalar_crypto_op & scalar_crypto_sha512 & scalar_crypto_sha512_low  & instruction[26:25] == 2'b10 & is_scalar_crypto_hash; // RV32 SHA512 Sigma 0 low
-//    assign op_ssha512_sig0h = !rst ? 0 : scalar_crypto_op & scalar_crypto_sha512 & scalar_crypto_sha512_high & instruction[26:25] == 2'b10 & is_scalar_crypto_hash; // RV32 SHA512 Sigma 0 high
-//    assign op_ssha512_sig1l = !rst ? 0 : scalar_crypto_op & scalar_crypto_sha512 & scalar_crypto_sha512_low  & instruction[26:25] == 2'b11 & is_scalar_crypto_hash; // RV32 SHA512 Sigma 1 low
-//    assign op_ssha512_sig1h = !rst ? 0 : scalar_crypto_op & scalar_crypto_sha512 & scalar_crypto_sha512_high & instruction[26:25] == 2'b11 & is_scalar_crypto_hash; // RV32 SHA512 Sigma 1 high
-//
-//    assign op_saes32_encs   = !rst ? 0 : scalar_crypto_op & is_scalar_crypto_block & scalar_crypto_aes & instruction[27:26] == 2'b01; // RV32 AES Encrypt SBox
-//    assign op_saes32_encsm  = !rst ? 0 : scalar_crypto_op & is_scalar_crypto_block & scalar_crypto_aes & instruction[27:26] == 2'b00; // RV32 AES Encrypt SBox + MixCols
-//    assign op_saes32_decs   = !rst ? 0 : scalar_crypto_op & is_scalar_crypto_block & scalar_crypto_aes & instruction[27:26] == 2'b11; // RV32 AES Decrypt SBox
-//    assign op_saes32_decsm  = !rst ? 0 : scalar_crypto_op & is_scalar_crypto_block & scalar_crypto_aes & instruction[27:26] == 2'b10; // RV32 AES Decrypt SBox + MixCols
-//
-//    assign op_ssm4_ks       = !rst ? 0 : scalar_crypto_op & is_scalar_crypto_block & scalar_crypto_sm4 & instruction[27:26] == 2'b00; //      SSM4 KeySchedule
-//    assign op_ssm4_ed       = !rst ? 0 : scalar_crypto_op & is_scalar_crypto_block & scalar_crypto_sm4 & instruction[27:26] == 2'b01; //      SSM4 Encrypt/Decrypt
-//
+
     wire [1:0] bs;
     
     assign bs = !rst ? 0 : instruction[31:30];
-//
-//    assign crypto_instruction = !rst ? 0 : {
-//     bs,op_ssha256_sig0,op_ssha256_sig1,op_ssha256_sum0,op_ssha256_sum1 
-//    };
+
     assign crypto_instruction = {
      bs, 1'b0 ,1'b0,1'b0,1'b0,
      op_ssha256_sig0,op_ssha256_sig1,op_ssha256_sum0,op_ssha256_sum1, 
@@ -302,52 +256,7 @@ module control_unit (
      1'b0 ,1'b0,  
      1'b0 ,1'b0
     };
-//
-////RISC-V Crypto - Bitmanip
-//  
-//    assign op_clmul     = !rst ? 0 : (alu_o&fn3_1_o) & instruction[27] & instruction[25];
-//    assign op_clmulh    = !rst ? 0 : (alu_o&fn3_3_o) & instruction[27] & instruction[25];
-//    assign op_xperm_n   = !rst ? 0 : (alu_o&fn3_2_o) & instruction[29] & instruction[27];
-//    assign op_xperm_b   = !rst ? 0 : (alu_o&fn3_4_o) & instruction[29] & instruction[27];
-//    assign op_ror       = !rst ? 0 : (alu_o&fn3_5_o) & instruction[30] & instruction[29];
-//    assign op_rol       = !rst ? 0 : (alu_o&fn3_1_o) & instruction[30] & instruction[29];
-//    assign op_rori      = !rst ? 0 : (imm_o&fn3_5_o) & instruction[30] & instruction[29];
-//    assign op_andn      = !rst ? 0 : (alu_o&fn3_7_o) & instruction[30] ;
-//    assign op_orn       = !rst ? 0 : (alu_o&fn3_6_o) & instruction[30] ;
-//    assign op_xnor      = !rst ? 0 : (alu_o&fn3_4_o) & instruction[30] ;
-//    assign op_pack      = !rst ? 0 : (alu_o&fn3_4_o) & instruction[27] ;
-//    assign op_packu     = !rst ? 0 : (alu_o&fn3_4_o) & instruction[30] & instruction[27]; 
-//    assign op_packh     = !rst ? 0 : (alu_o&fn3_7_o) & instruction[27] ;
-//    assign op_grevi     = !rst ? 0 : (imm_o&fn3_5_o) & instruction[30] & instruction[29] & instruction[27];
-//    assign op_shfl      = !rst ? 0 : (alu_o&fn3_1_o) & instruction[27] ;
-//    assign op_unshfl    = !rst ? 0 : (alu_o&fn3_5_o) & instruction[27] ;
-//
-//    assign is_bitmanip = !rst ? 0 : op_clmul | op_clmul | op_clmulh | op_xperm_n | op_xperm_b | 
-//        op_ror | op_rol | op_rori | op_andn | op_orn | op_xnor | op_pack | op_packu | 
-//        op_packh | op_grevi | op_shfl | op_unshfl;
-//
-//    wire [4:0] bitmanip_imm;
-//    assign bitmanip_imm = !rst ? 0 :instruction[24:20]; 
-//
-//    assign bitmanip_instruction = !rst ? 0 :{
-//    bitmanip_imm, 
-//    op_clmul, 
-//    op_clmulh, 
-//    op_xperm_n, 
-//    op_xperm_b, 
-//    op_ror, 
-//    op_rol, 
-//    op_rori, 
-//    op_andn, 
-//    op_orn, 
-//    op_xnor,
-//    op_pack, 
-//    op_packu, 
-//    op_packh, 
-//    op_grevi, 
-//    op_shfl, 
-//    op_unshfl
-//    };
+
 
     
 endmodule
